@@ -46,10 +46,20 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['libs']
+        }
+    }
 }
 
 dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(':utils')
+
+    implementation files('libs/icafe.jar')
+
 
     // Kotlin lang
     implementation 'androidx.core:core-ktx:1.2.0'

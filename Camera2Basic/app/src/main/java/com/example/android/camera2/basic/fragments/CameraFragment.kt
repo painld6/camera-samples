@@ -18,16 +18,11 @@ package com.example.android.camera2.basic.fragments
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageFormat
-import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.CaptureResult
-import android.hardware.camera2.DngCreator
-import android.hardware.camera2.TotalCaptureResult
+import android.hardware.camera2.*
 import android.media.Image
 import android.media.ImageReader
 import android.os.Build
@@ -35,11 +30,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.Surface
-import android.view.SurfaceHolder
-import android.view.View
-import android.view.ViewGroup
+import android.util.Size
+import android.view.*
 import androidx.core.graphics.drawable.toDrawable
 import androidx.exifinterface.media.ExifInterface
 import androidx.fragment.app.Fragment
@@ -48,31 +40,33 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.Navigation
 import androidx.navigation.fragment.navArgs
-import com.example.android.camera.utils.computeExifOrientation
-import com.example.android.camera.utils.getPreviewOutputSize
 import com.example.android.camera.utils.AutoFitSurfaceView
 import com.example.android.camera.utils.OrientationLiveData
+import com.example.android.camera.utils.computeExifOrientation
+import com.example.android.camera.utils.getPreviewOutputSize
 import com.example.android.camera2.basic.CameraActivity
 import com.example.android.camera2.basic.R
 import kotlinx.android.synthetic.main.fragment_camera.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.Closeable
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
+import java.io.*
 import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeoutException
-import java.util.Date
-import java.util.Locale
-import kotlin.RuntimeException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 class CameraFragment : Fragment() {
+
+    enum class OutputFormat(val value: Int) {
+        JPEG(ImageFormat.JPEG),
+        RAW16(ImageFormat.RAW_SENSOR),
+        RAW10(ImageFormat.RAW10),
+        DEPTH16(ImageFormat.DEPTH16)
+    }
 
     /** AndroidX navigation arguments */
     private val args: CameraFragmentArgs by navArgs()
@@ -136,6 +130,8 @@ class CameraFragment : Fragment() {
     /** Live data listener for changes in the device orientation relative to the camera */
     private lateinit var relativeOrientation: OrientationLiveData
 
+    private var mSize: Size? = null
+
     override fun onCreateView(
             inflater: LayoutInflater,
             container: ViewGroup?,
@@ -173,11 +169,13 @@ class CameraFragment : Fragment() {
 
         // Used to rotate the output media to match device orientation
         relativeOrientation = OrientationLiveData(requireContext(), characteristics).apply {
-            observe(viewLifecycleOwner, Observer {
-                orientation -> Log.d(TAG, "Orientation changed: $orientation")
+            observe(viewLifecycleOwner, Observer { orientation ->
+                Log.d(TAG, "Orientation changed: $orientation")
             })
         }
     }
+
+    data class DualCamera(val logicalId: String, val physicalId1: String, val physicalId2: String)
 
     /**
      * Begin all camera operations in a coroutine in the main thread. This function:
@@ -187,15 +185,22 @@ class CameraFragment : Fragment() {
      * - Sets up the still image capture listeners
      */
     private fun initializeCamera() = lifecycleScope.launch(Dispatchers.Main) {
+
+        //=======================测试========================
+//        cameraManager.cameraIdList.map {
+//            Pair(cameraManager.getCameraCharacteristics(it), it)
+//        }.filter {
+//        }
+
         // Open the selected camera
         camera = openCamera(cameraManager, args.cameraId, cameraHandler)
 
         // Initialize an image reader which will be used to capture still photos
-        val size = characteristics.get(
+        mSize = characteristics.get(
                 CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
                 .getOutputSizes(args.pixelFormat).maxBy { it.height * it.width }!!
         imageReader = ImageReader.newInstance(
-                size.width, size.height, args.pixelFormat, IMAGE_BUFFER_SIZE)
+                mSize!!.width, mSize!!.height, args.pixelFormat, IMAGE_BUFFER_SIZE)
 
         // Creates list of Surfaces where the camera will output frames
         val targets = listOf(viewFinder.holder.surface, imageReader.surface)
@@ -258,7 +263,9 @@ class CameraFragment : Fragment() {
             handler: Handler? = null
     ): CameraDevice = suspendCancellableCoroutine { cont ->
         manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-            override fun onOpened(device: CameraDevice) = cont.resume(device)
+            override fun onOpened(device: CameraDevice) {
+                cont.resume(device)
+            }
 
             override fun onDisconnected(device: CameraDevice) {
                 Log.w(TAG, "Camera $cameraId has been disconnected")
@@ -266,7 +273,7 @@ class CameraFragment : Fragment() {
             }
 
             override fun onError(device: CameraDevice, error: Int) {
-                val msg = when(error) {
+                val msg = when (error) {
                     ERROR_CAMERA_DEVICE -> "Fatal (device)"
                     ERROR_CAMERA_DISABLED -> "Device policy"
                     ERROR_CAMERA_IN_USE -> "Camera in use"
@@ -293,7 +300,7 @@ class CameraFragment : Fragment() {
 
         // Create a capture session using the predefined targets; this also involves defining the
         // session state callback to be notified of when the session is ready
-        device.createCaptureSession(targets, object: CameraCaptureSession.StateCallback() {
+        device.createCaptureSession(targets, object : CameraCaptureSession.StateCallback() {
 
             override fun onConfigured(session: CameraCaptureSession) = cont.resume(session)
 
@@ -315,7 +322,8 @@ class CameraFragment : Fragment() {
 
         // Flush any images left in the image reader
         @Suppress("ControlFlowWithEmptyBody")
-        while (imageReader.acquireNextImage() != null) {}
+        while (imageReader.acquireNextImage() != null) {
+        }
 
         // Start a new image queue
         val imageQueue = ArrayBlockingQueue<Image>(IMAGE_BUFFER_SIZE)
@@ -365,7 +373,7 @@ class CameraFragment : Fragment() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                                 image.format != ImageFormat.DEPTH_JPEG &&
                                 image.timestamp != resultTimestamp) continue
-                         Log.d(TAG, "Matching image dequeued: ${image.timestamp}")
+                        Log.d(TAG, "Matching image dequeued: ${image.timestamp}")
 
                         // Unset the image reader listener
                         imageReaderHandler.removeCallbacks(timeoutRunnable)
@@ -399,16 +407,7 @@ class CameraFragment : Fragment() {
 
             // When the format is JPEG or DEPTH JPEG we can simply save the bytes as-is
             ImageFormat.JPEG, ImageFormat.DEPTH_JPEG -> {
-                val buffer = result.image.planes[0].buffer
-                val bytes = ByteArray(buffer.remaining()).apply { buffer.get(this) }
-                try {
-                    val output = createFile(requireContext(), "jpg")
-                    FileOutputStream(output).use { it.write(bytes) }
-                    cont.resume(output)
-                } catch (exc: IOException) {
-                    Log.e(TAG, "Unable to write JPEG image to file", exc)
-                    cont.resumeWithException(exc)
-                }
+                cont.resume(saveAsJpeg(result.image))
             }
 
             // When the format is RAW we use the DngCreator utility library
@@ -424,6 +423,41 @@ class CameraFragment : Fragment() {
                 }
             }
 
+            ImageFormat.DEPTH16 -> {
+                try {
+                    val bitmap = BitmapFactory.decodeResource(context!!.resources, R.drawable.ic_launcher)
+                    val imgData = IntArray(bitmap.width * bitmap.height * 4)
+                    bitmap.getPixels(
+                            imgData,
+                            0,
+                            bitmap.width * 2,
+                            0,
+                            0,
+                            bitmap.width,
+                            bitmap.height
+                    )
+                    val newBitmap = Bitmap.createBitmap(
+                            imgData,
+                            bitmap.width * 2,
+                            bitmap.height * 2,
+                            Bitmap.Config.ARGB_8888
+                    )
+
+                    val output = createFile(requireContext(), "jpeg")
+                    FileOutputStream(output).use {
+                        newBitmap.compress(
+                                Bitmap.CompressFormat.JPEG,
+                                100,
+                                it
+                        )
+//                        ImageChanger.writeDepth16Image(result.image, it)
+                    }
+                    cont.resume(output)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
             // No other formats are supported by this sample
             else -> {
                 val exc = RuntimeException("Unknown image format: ${result.image.format}")
@@ -431,6 +465,63 @@ class CameraFragment : Fragment() {
                 cont.resumeWithException(exc)
             }
         }
+    }
+
+    @Throws(IOException::class)
+    private fun saveAsJpeg(image: Image): File {
+        val buffer = image.planes[0].buffer
+        val bytes = ByteArray(buffer.remaining()).apply { buffer.get(this) }
+        try {
+            val output = createFile(requireContext(), "jpg")
+            FileOutputStream(output).use { it.write(bytes) }
+            return output
+        } catch (exc: IOException) {
+            Log.e(TAG, "Unable to write JPEG image to file", exc)
+            throw IOException("Unable to write JPEG image to file")
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun writeDepth16Image(
+            img: Image,
+            out: OutputStream
+    ) {
+        if (img.format != ImageFormat.DEPTH16) {
+            throw IOException("Unexpected Image format ${img.format}, expected ImageFormat.DEPTH16")
+        }
+
+        val depthBuffer = img.planes[0].buffer.asShortBuffer()
+        depthBuffer.rewind()
+        // Very rough nearest-neighbor downsample for display
+        var w = img.width
+        var h = img.height
+        // rowStride is in bytes, accessing array as shorts
+        var stride = img.planes[0].rowStride / 2
+        val yRow = ShortArray(w)
+        val imgArray = IntArray(w * h)
+        val scale = 1
+        w = w / scale
+        h = h / scale
+        stride = h
+        var y = 0
+        var rowStart = 0
+        while (y < h) {
+            // Align to start of nearest-neighbor row
+            depthBuffer.position(rowStart)
+            depthBuffer.get(yRow)
+            var x = 0
+            while (x < w) {
+                val y16 = yRow[x]
+                val g: Int = y16.toInt() shr 8 and 0xFF
+                imgArray[x] = Color.rgb(g, g, g)
+                x++
+            }
+            y++
+            rowStart += stride
+        }
+
+        val rgbImage = Bitmap.createBitmap(imgArray, w, h, Bitmap.Config.ARGB_8888)
+        rgbImage.compress(Bitmap.CompressFormat.PNG, 100, out)
     }
 
     override fun onStop() {

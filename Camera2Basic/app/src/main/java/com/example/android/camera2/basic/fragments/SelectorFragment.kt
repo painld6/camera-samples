@@ -126,6 +126,12 @@ class SelectorFragment : Fragment() {
                     availableCameras.add(FormatItem(
                             "$orientation DEPTH ($id)", id, ImageFormat.DEPTH_JPEG))
                 }
+                if (capabilities.contains(
+                            CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT) &&
+                        outputFormats.contains(ImageFormat.DEPTH16)) {
+                    availableCameras.add(FormatItem(
+                            "$orientation DEPTH ($id)", id, ImageFormat.DEPTH16))
+                }
             }
 
             return availableCameras
