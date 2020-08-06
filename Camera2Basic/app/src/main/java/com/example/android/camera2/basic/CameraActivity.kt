@@ -16,6 +16,11 @@
 
 package com.example.android.camera2.basic
 
+import android.content.Context
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraMetadata
 import android.os.Bundle
 import android.view.View
 import android.widget.FrameLayout
@@ -38,6 +43,30 @@ class CameraActivity : AppCompatActivity() {
         container.postDelayed({
             container.systemUiVisibility = FLAGS_FULLSCREEN
         }, IMMERSIVE_FLAG_TIMEOUT)
+    }
+
+
+    private fun isCamera2Device(): Boolean {
+        val camMgr = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        var camera2Dev = true
+        try {
+            val cameraIds = camMgr.cameraIdList
+            if (cameraIds.isNotEmpty()) {
+                for (id in cameraIds) {
+                    val characteristics = camMgr.getCameraCharacteristics(id)
+                    val deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)!!
+                    val facing = characteristics.get(CameraCharacteristics.LENS_FACING)!!
+                    if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY &&
+                            facing == CameraMetadata.LENS_FACING_BACK) {
+                        camera2Dev = false
+                    }
+                }
+            }
+        } catch (e: CameraAccessException) {
+            e.printStackTrace()
+            camera2Dev = false
+        }
+        return camera2Dev
     }
 
     companion object {

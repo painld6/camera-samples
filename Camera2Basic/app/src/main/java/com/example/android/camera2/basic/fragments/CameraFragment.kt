@@ -19,7 +19,6 @@ package com.example.android.camera2.basic.fragments
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageFormat
 import android.hardware.camera2.*
@@ -45,6 +44,7 @@ import com.example.android.camera.utils.OrientationLiveData
 import com.example.android.camera.utils.computeExifOrientation
 import com.example.android.camera.utils.getPreviewOutputSize
 import com.example.android.camera2.basic.CameraActivity
+import com.example.android.camera2.basic.ImageChanger
 import com.example.android.camera2.basic.R
 import kotlinx.android.synthetic.main.fragment_camera.*
 import kotlinx.coroutines.Dispatchers
@@ -425,32 +425,10 @@ class CameraFragment : Fragment() {
 
             ImageFormat.DEPTH16 -> {
                 try {
-                    val bitmap = BitmapFactory.decodeResource(context!!.resources, R.drawable.ic_launcher)
-                    val imgData = IntArray(bitmap.width * bitmap.height * 4)
-                    bitmap.getPixels(
-                            imgData,
-                            0,
-                            bitmap.width * 2,
-                            0,
-                            0,
-                            bitmap.width,
-                            bitmap.height
-                    )
-                    val newBitmap = Bitmap.createBitmap(
-                            imgData,
-                            bitmap.width * 2,
-                            bitmap.height * 2,
-                            Bitmap.Config.ARGB_8888
-                    )
-
                     val output = createFile(requireContext(), "jpeg")
                     FileOutputStream(output).use {
-                        newBitmap.compress(
-                                Bitmap.CompressFormat.JPEG,
-                                100,
-                                it
-                        )
-//                        ImageChanger.writeDepth16Image(result.image, it)
+//                        ImageChanger.writeDepth16Image(requireContext(), result.image, it)
+                        writeDepth16Image(result.image, it)
                     }
                     cont.resume(output)
                 } catch (e: Exception) {
@@ -490,38 +468,63 @@ class CameraFragment : Fragment() {
             throw IOException("Unexpected Image format ${img.format}, expected ImageFormat.DEPTH16")
         }
 
-        val depthBuffer = img.planes[0].buffer.asShortBuffer()
+        val depthBuffer = img.planes[0].buffer
         depthBuffer.rewind()
         // Very rough nearest-neighbor downsample for display
+        // rowStride is in bytes, accessing array as shorts
+        val plane = img.planes[0]
+        var stride = img.planes[0].rowStride / 2
+        val file = File(requireContext().filesDir, "img.txt")
+        if (file.exists()) {
+            file.delete()
+        }
         var w = img.width
         var h = img.height
-        // rowStride is in bytes, accessing array as shorts
-        var stride = img.planes[0].rowStride / 2
-        val yRow = ShortArray(w)
+        val fileOutputStream = FileOutputStream(file)
+        val bufferOutput = BufferedOutputStream(fileOutputStream)
+        val yRow = ByteArray(w)
         val imgArray = IntArray(w * h)
         val scale = 1
-        w = w / scale
-        h = h / scale
-        stride = h
         var y = 0
+        var j = 0
         var rowStart = 0
+        Log.e("cyw", "w:$w,h:$h")
         while (y < h) {
-            // Align to start of nearest-neighbor row
+            val builder = StringBuilder()
             depthBuffer.position(rowStart)
-            depthBuffer.get(yRow)
+            depthBuffer[yRow]
             var x = 0
+            var i = 0
             while (x < w) {
-                val y16 = yRow[x]
-                val g: Int = y16.toInt() shr 8 and 0xFF
-                imgArray[x] = Color.rgb(g, g, g)
+                val y16 = yRow[i]
+                val y16Int = y16.toInt()
+                val depthRange = y16Int and 0x1f
+                val depthConfidence = (y16Int shr 1) and 0x7
+                val depthPercentage = if (depthConfidence == 0) {
+                    1f
+                } else {
+                    (depthConfidence - 1f) / 7f
+                }
+                val g: Int = y16Int and 0xFF
+                builder.append("$g:$depthRange:$depthConfidence:$depthPercentage,")
+                val color = Color.rgb(g, g, g)
+                imgArray[j] = color
                 x++
+                i += scale
+                j++
             }
+            val bytes = builder.toString().toByteArray()
+            bufferOutput.write(bytes, 0, bytes.size)
             y++
             rowStart += stride
         }
+        bufferOutput.flush()
+        fileOutputStream.flush()
+        bufferOutput.close()
 
         val rgbImage = Bitmap.createBitmap(imgArray, w, h, Bitmap.Config.ARGB_8888)
-        rgbImage.compress(Bitmap.CompressFormat.PNG, 100, out)
+        rgbImage.byteCount
+        rgbImage.compress(Bitmap.CompressFormat.JPEG, 100, out)
     }
 
     override fun onStop() {
