@@ -39,26 +39,26 @@ public class ImageChanger {
         w = w / scale;
         h = h / scale;
         stride = stride * scale;
-        short[] imgBuffer = new short[depthBuffer.remaining()];
-        int[] imgData = new int[depthBuffer.remaining()];
-        depthBuffer.position(0);
-        depthBuffer.get(imgBuffer);
-        for (int y = 0; y < imgData.length; y++) {
-            short y16 = imgBuffer[y];
-            int g = (y16 >> 8) & 0xff;
-            imgData[y] = Color.argb(255, g, g, g);
-        }
-//        for (int y = 0, j = 0, rowStart = 0; y < h; y++, rowStart += stride) {
-//            // Align to start of nearest-neighbor row
-//            depthBuffer.position(rowStart);
-//            depthBuffer.get(yRow);
-//            for (int x = 0, i = 0; x < w; x++, i += scale, j++) {
-//                short y16 = yRow[i];
-//                int g = (y16 >> 8) & 0x00FF;
-//                int color = Color.rgb(g, g, g);
-//                imgArray[j] = color;
-//            }
+//        short[] imgBuffer = new short[depthBuffer.remaining()];
+//        int[] imgData = new int[depthBuffer.remaining()];
+//        depthBuffer.position(0);
+//        depthBuffer.get(imgBuffer);
+//        for (int y = 0; y < imgData.length; y++) {
+//            short y16 = imgBuffer[y];
+//            int g = (y16 >> 8) & 0xff;
+//            imgData[y] = Color.argb(255, g, g, g);
 //        }
-        return Bitmap.createBitmap(imgData, w, h, Bitmap.Config.ARGB_8888);
+        for (int y = 0, j = 0, rowStart = 0; y < h; y++, rowStart += stride) {
+            // Align to start of nearest-neighbor row
+            depthBuffer.position(rowStart);
+            depthBuffer.get(yRow);
+            for (int x = 0, i = 0; x < w; x++, i += scale, j++) {
+                short y16 = yRow[i];
+                int g = (y16 >> 8) & 0x00FF;
+                int color = Color.rgb(g, g, g);
+                imgArray[j] = color;
+            }
+        }
+        return Bitmap.createBitmap(imgArray, w, h, Bitmap.Config.ARGB_8888);
     }
 }
