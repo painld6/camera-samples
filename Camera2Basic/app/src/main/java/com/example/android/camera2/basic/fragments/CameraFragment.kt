@@ -44,7 +44,6 @@ import com.example.android.camera.utils.OrientationLiveData
 import com.example.android.camera.utils.computeExifOrientation
 import com.example.android.camera.utils.getPreviewOutputSize
 import com.example.android.camera2.basic.CameraActivity
-import com.example.android.camera2.basic.ImageChanger
 import com.example.android.camera2.basic.R
 import kotlinx.android.synthetic.main.fragment_camera.*
 import kotlinx.coroutines.Dispatchers
@@ -253,6 +252,32 @@ class CameraFragment : Fragment() {
                 it.post { it.isEnabled = true }
             }
         }
+    }
+
+    /**
+     * 判断是否可以启用 camera2
+     */
+    private fun isCamera2Device(): Boolean {
+        val camMgr = requireActivity().getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        var camera2Dev = true
+        try {
+            val cameraIds = camMgr.cameraIdList
+            if (cameraIds.size != 0) {
+                for (id in cameraIds) {
+                    val characteristics = camMgr.getCameraCharacteristics(id)
+                    val deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)!!
+                    val facing = characteristics.get(CameraCharacteristics.LENS_FACING)!!
+                    if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY &&
+                            facing == CameraMetadata.LENS_FACING_BACK) {
+                        camera2Dev = false
+                    }
+                }
+            }
+        } catch (e: CameraAccessException) {
+            e.printStackTrace()
+            camera2Dev = false
+        }
+        return camera2Dev
     }
 
     /** Opens the camera and returns the opened device (as the result of the suspend coroutine) */
