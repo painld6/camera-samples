@@ -258,14 +258,35 @@ class CameraFragment : Fragment() {
      * 判断是否可以启用 camera2
      */
     private fun isCamera2Device(): Boolean {
+        // 获取相机服务管理器，所有摄像头均通过 CameraDevice 类保存在管理器中
         val camMgr = requireActivity().getSystemService(Context.CAMERA_SERVICE) as CameraManager
         var camera2Dev = true
         try {
+            // 获取设备中可用的 cameraId
             val cameraIds = camMgr.cameraIdList
-            if (cameraIds.size != 0) {
+            // 输出摄像头个数
+            println("Camera Size:${cameraIds.size}")
+            if (cameraIds.isNotEmpty()) {
                 for (id in cameraIds) {
+                    // 通过 cameraId 获取该摄像头的基本属性
                     val characteristics = camMgr.getCameraCharacteristics(id)
+                    /**
+                     * INFO_SUPPORTED_HARDWARE_LEVEL_3
+                     * 包含以下所有功能外，支持YUV重新处理和RAW图像捕获，以及其他输出流配置。
+                     *
+                     * INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY = 2
+                     * 设备在较旧的Android设备上以向后兼容模式运行，并且功能非常有限。
+                     *
+                     * INFO_SUPPORTED_HARDWARE_LEVEL_FULL = 1
+                     * 设备还支持对传感器，闪光灯，镜头和后处理设置进行逐帧手动控制，以及高速率的图像捕获。
+                     *
+                     * INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED = 0
+                     * 设备代表基线功能集，并且还可能包含作为FULL子集的其他功能。
+                     *
+                     * 所以根据上述说明，硬件的兼容性为：LEGACY < LIMITED < FULL < LEVEL_3
+                     */
                     val deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)!!
+                    // 查询摄像头与设备屏幕的朝向
                     val facing = characteristics.get(CameraCharacteristics.LENS_FACING)!!
                     if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY &&
                             facing == CameraMetadata.LENS_FACING_BACK) {
@@ -274,8 +295,8 @@ class CameraFragment : Fragment() {
                 }
             }
         } catch (e: CameraAccessException) {
-            e.printStackTrace()
             camera2Dev = false
+            e.printStackTrace()
         }
         return camera2Dev
     }
@@ -492,29 +513,27 @@ class CameraFragment : Fragment() {
         if (img.format != ImageFormat.DEPTH16) {
             throw IOException("Unexpected Image format ${img.format}, expected ImageFormat.DEPTH16")
         }
-
+        // 获取流数据
         val depthBuffer = img.planes[0].buffer
         depthBuffer.rewind()
-        // Very rough nearest-neighbor downsample for display
-        // rowStride is in bytes, accessing array as shorts
-        val plane = img.planes[0]
+        // 获取一行的字节数
         var stride = img.planes[0].rowStride / 2
         val file = File(requireContext().filesDir, "img.txt")
         if (file.exists()) {
             file.delete()
         }
-        var w = img.width
-        var h = img.height
         val fileOutputStream = FileOutputStream(file)
         val bufferOutput = BufferedOutputStream(fileOutputStream)
+        var w = img.width
+        var h = img.height
         val yRow = ByteArray(w)
+        // 用于保存转换后的深度图数据
         val imgArray = IntArray(w * h)
-        val scale = 1
         var y = 0
         var j = 0
         var rowStart = 0
-        Log.e("cyw", "w:$w,h:$h")
         while (y < h) {
+            // 重置流坐标
             val builder = StringBuilder()
             depthBuffer.position(rowStart)
             depthBuffer[yRow]
@@ -523,19 +542,23 @@ class CameraFragment : Fragment() {
             while (x < w) {
                 val y16 = yRow[i]
                 val y16Int = y16.toInt()
+                // 获取深度图距离
                 val depthRange = y16Int and 0x1f
+                // 获取置信值
                 val depthConfidence = (y16Int shr 1) and 0x7
+                // 转换成百分比
                 val depthPercentage = if (depthConfidence == 0) {
                     1f
                 } else {
                     (depthConfidence - 1f) / 7f
                 }
+                // 把流数据中的值转换至 0~255 色值之间
                 val g: Int = y16Int and 0xFF
                 builder.append("$g:$depthRange:$depthConfidence:$depthPercentage,")
                 val color = Color.rgb(g, g, g)
                 imgArray[j] = color
                 x++
-                i += scale
+                i++
                 j++
             }
             val bytes = builder.toString().toByteArray()
@@ -547,8 +570,8 @@ class CameraFragment : Fragment() {
         fileOutputStream.flush()
         bufferOutput.close()
 
+        // 把深度图数据转成 Bitmap 类型
         val rgbImage = Bitmap.createBitmap(imgArray, w, h, Bitmap.Config.ARGB_8888)
-        rgbImage.byteCount
         rgbImage.compress(Bitmap.CompressFormat.JPEG, 100, out)
     }
 
