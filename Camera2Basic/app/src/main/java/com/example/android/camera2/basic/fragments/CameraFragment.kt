@@ -270,6 +270,7 @@ class CameraFragment : Fragment() {
                 for (id in cameraIds) {
                     // 通过 cameraId 获取该摄像头的基本属性
                     val characteristics = camMgr.getCameraCharacteristics(id)
+
                     /**
                      * INFO_SUPPORTED_HARDWARE_LEVEL_3
                      * 包含以下所有功能外，支持YUV重新处理和RAW图像捕获，以及其他输出流配置。

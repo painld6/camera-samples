@@ -73,7 +73,7 @@ class SelectorFragment : Fragment() {
         private data class FormatItem(val title: String, val cameraId: String, val format: Int)
 
         /** Helper function used to convert a lens orientation enum into a human-readable string */
-        private fun lensOrientationString(value: Int) = when(value) {
+        private fun lensOrientationString(value: Int) = when (value) {
             CameraCharacteristics.LENS_FACING_BACK -> "Back"
             CameraCharacteristics.LENS_FACING_FRONT -> "Front"
             CameraCharacteristics.LENS_FACING_EXTERNAL -> "External"
@@ -121,13 +121,13 @@ class SelectorFragment : Fragment() {
 
                 // Return cameras that support JPEG DEPTH capability
                 if (capabilities.contains(
-                            CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT) &&
+                                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT) &&
                         outputFormats.contains(ImageFormat.DEPTH_JPEG)) {
                     availableCameras.add(FormatItem(
                             "$orientation DEPTH ($id)", id, ImageFormat.DEPTH_JPEG))
                 }
                 if (capabilities.contains(
-                            CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT) &&
+                                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT) &&
                         outputFormats.contains(ImageFormat.DEPTH16)) {
                     availableCameras.add(FormatItem(
                             "$orientation DEPTH ($id)", id, ImageFormat.DEPTH16))
